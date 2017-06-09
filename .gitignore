@@ -1,0 +1,5 @@
+__pycache__
+migrations
+app.db
+test_data
+test_attachments
