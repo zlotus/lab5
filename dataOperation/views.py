@@ -4,7 +4,8 @@ from flask import request
 from pprint import pprint
 from app import app
 from app import db
-from config import ALLOWED_EXTENSIONS, UPLOAD_DATA_FOLDER
+from dataOperation.utils import allowed_file
+from config import UPLOAD_DATA_FOLDER
 from dataOperation import models
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -16,30 +17,16 @@ def index():
     return 'hello world!'
 
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route('/api/v1/dataOperation/tests/attachments', methods=['POST', 'DELETE'])
+def test_attachment_service():
+    resp = flask.Response(json.dumps({'status': 'success'}))
+    if request.method == 'POST':
+        pass
+    elif request.method == 'DELETE':
+        pass
 
 
-def clean_data(data):
-
-    def _data2db(data_str):
-        data_body = data_str.split('Curve Values:')[1].split('Results:')[0].strip()
-        data_lines = data_body.splitlines()[2:]
-        for line in data_lines:
-            print(line.split())
-
-    data_fragments = data.split('Curve Name')
-    e_prime, tan_delta = '', ''
-    for fragment in data_fragments:
-        if "E'(Modulus)" in fragment:
-            e_prime = fragment
-        elif 'Tan Delta' in fragment:
-            tan_delta = fragment
-    _data2db(e_prime)
-
-
-@app.route('/api/v1/dataOperation/tests/data', methods=['POST'])
+@app.route('/api/v1/dataOperation/tests/data', methods=['POST', 'DELETE'])
 def test_data_service():
 
     def _data2db(data_string, test, data_type="E'"):
@@ -48,15 +35,13 @@ def test_data_service():
         for line in data_lines:
             row = line.split()
             test.test_data.append(models.TestData(sequence_id=row[0],
-                                                  x_value=row[2],
-                                                  y_value=row[3],
-                                                  data_type=data_type,
-                                                  date=datetime.now()))
-
-        db.session.commit()
+                                                  x_value=row[-2],
+                                                  y_value=row[-1],
+                                                  data_type=data_type))
 
     resp = flask.Response(json.dumps({'status': 'success'}))
     if request.method == 'POST':
+        # add data file
         if request.is_xhr:
             file = request.files['datafile']
             if file and allowed_file(file.filename):
@@ -67,9 +52,12 @@ def test_data_service():
                 filepath = os.path.join(dirpath, filename)
                 file.save(filepath)
                 resp = flask.Response(json.dumps({'status': 'success', 'url': filepath}))
+
+                # db: update the data file path for the test where test.id = test_id
                 test = models.Test.query.get(int(test_id))
                 test.test_data_filepath = filepath
                 db.session.commit()
+
                 with open(filepath, encoding='utf-16') as data:
                     data_fragments = data.read().split('Curve Name')[1:4]
                     e_prime, tan_delta = '', ''
@@ -78,8 +66,34 @@ def test_data_service():
                             e_prime = fragment
                         elif "E'(Modulus)" not in fragment and 'E"(Modulus)' not in fragment:
                             tan_delta = fragment
-                    _data2db(e_prime, test)
+
+                    # db: delete all TestData for the test where test.id = test_id
+                    models.TestData.query.filter(models.TestData.test_id == test_id).delete()
+                    db.session.commit()
+
+                    # db: append E' data for the test where test.id = test_id
+                    _data2db(e_prime, test, "E'")
+                    db.session.commit()
+
+                    # db: append Tan Delta data for the test where test.id = test_id
                     _data2db(tan_delta, test, 'Tan Delta')
+                    db.session.commit()
+    elif request.method == 'DELETE':
+        if request.is_json:
+            filename = secure_filename(request.json['removedFile'])
+            test_id = request.json['testID']
+            dirpath = os.path.join(UPLOAD_DATA_FOLDER, test_id)
+            filepath = os.path.join(dirpath, filename)
+
+            # db: delete all TestData for the test where test.id = test_id
+            models.TestData.query.filter(models.TestData.test_id == test_id).delete()
+            db.session.commit()
+
+            try:
+                os.remove(filepath)
+            except FileNotFoundError as err:
+                print('FileNotFound: ', filepath)
+            pass
 
     resp.headers['Access-Control-Allow-Origin'] = '*'
     resp.headers['Access-Control-Allow-Methods'] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS']

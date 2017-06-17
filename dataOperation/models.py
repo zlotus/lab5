@@ -65,14 +65,14 @@ class Test(db.Model):
     frequency_min = db.Column(db.Float)
     frequency_max = db.Column(db.Float)
     test_type = db.Column(db.String(16))
-    test_data_filepath = db.Column(db.String(64))
+    data_file_url = db.Column(db.String(256))
     date = db.Column(db.DATETIME)
     memo = db.Column(db.String(128))
     
     formulation_id = db.Column(db.Integer, db.ForeignKey('Formulation.id'))
     
-    test_data = db.relationship('TestData', backref='formulation', lazy='dynamic')
-    test_attachment = db.relationship('TestAttachment', backref='formulation', lazy='dynamic')
+    test_data = db.relationship('TestData', backref='test', lazy='dynamic')
+    test_attachment = db.relationship('TestAttachment', backref='test', lazy='dynamic')
 
     def __repr__(self):
         return '<Test %r>' % self.name
@@ -85,7 +85,6 @@ class TestData(db.Model):
     x_value = db.Column(db.Float)
     y_value = db.Column(db.Float)
     data_type = db.Column(db.String(16))
-    date = db.Column(db.DATETIME)
     memo = db.Column(db.String(128))
     test_id = db.Column(db.Integer, db.ForeignKey('Test.id'))
 
@@ -97,10 +96,10 @@ class TestAttachment(db.Model):
     __tablename__ = 'TestAttachment'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64))
-    url = db.Column(db.String(256))
+    attachment_url = db.Column(db.String(256))
     date = db.Column(db.DATETIME)
     memo = db.Column(db.String(128))
-    formulation_id = db.Column(db.Integer, db.ForeignKey('Test.id'))
+    test_id = db.Column(db.Integer, db.ForeignKey('Test.id'))
 
     def __repr__(self):
         return '<TestAttachment %r>' % self.name
