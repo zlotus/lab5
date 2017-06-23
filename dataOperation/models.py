@@ -97,7 +97,6 @@ class TestAttachment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64))
     attachment_url = db.Column(db.String(256))
-    date = db.Column(db.DATETIME)
     memo = db.Column(db.String(128))
     test_id = db.Column(db.Integer, db.ForeignKey('Test.id'))
 
