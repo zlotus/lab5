@@ -3,3 +3,7 @@ sqlalchemy
 flask_sqlalchemy
 flask_migrate
 flask_script
+numpy
+celery
+celery[redis]
+redis

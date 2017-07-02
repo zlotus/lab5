@@ -1,11 +1,11 @@
 import flask
 import json
 import os
+from shutil import rmtree
 from flask import request
-from pprint import pprint
 from app import app
 from app import db
-from dataOperation.utils import allowed_file
+from dataOperation.utils import allowed_file, set_debug_response_header
 from config import UPLOAD_FOLDER
 from dataOperation.models import Formulation, FormulationProperty, Test, TestData, TestAttachment
 from datetime import datetime
@@ -38,9 +38,8 @@ def dashboard_service():
         result['attachmentNumber'] = a[0] if a[0] else 0
         result.update({'status': 'success'})
         resp = flask.Response(json.dumps(result))
-        print(resp)
 
-    return resp
+    return set_debug_response_header(resp)
 
 
 ############################################################
@@ -90,12 +89,11 @@ def test_instance_attachment_collection_service(test_id):
                 print('FileNotFound: ', filepath)
                 resp = flask.Response(json.dumps({'status': 'failed', 'url': filepath}))
 
-    return resp
+    return set_debug_response_header(resp)
 
 
 @app.route('/api/v1/dataOperation/tests/<int:test_id>/data', methods=['GET', 'POST', 'DELETE'])
 def test_instance_data_collection_service(test_id):
-
     def _data2db(data_string, test_instance, data_type="E'"):
         data_body = data_string.split('Curve Values:')[1].split('Results:')[0].strip()
         data_lines = data_body.splitlines()[2:]
@@ -107,27 +105,26 @@ def test_instance_data_collection_service(test_id):
                                                     data_type=data_type))
 
     resp = flask.Response(json.dumps({'status': 'failed'}))
-    if test_id <=0:
-        return resp
+    if test_id <= 0:
+        return set_debug_response_header(resp)
 
     if request.method == 'GET':
-        data_dict = {
-            'formulation_id': Test.query.get(test_id).formulation_id,
-            'test_id': test_id,
-            'test_data': {
-                'e_prime': [],
-                'tan_delta': []
-            }
+        formulation_id = Test.query.get(test_id).formulation_id
+        test_data = {
+            'e_prime': [],
+            'tan_delta': []
         }
-        print(data_dict)
-        # coordinate_name = 'x' if Test.query.get(test_id).measure_type == 'temperature' else 'y'
-        td_rs = TestData.query.filter(TestData.test_id == test_id)
+        td_rs = Test.query.get(test_id).test_data.order_by(TestData.x_value)
         for td_r in td_rs:
-            if td_r.data_type.lower() == "e'":
-                data_dict['test_data']['e_prime'].append({'x': td_r.x_value, 'y': td_r.y_value})
-            elif td_r.data_type.lower() == 'tan delta':
-                data_dict['test_data']['tan_delta'].append({'x': td_r.x_value, 'y': td_r.y_value})
-        resp = flask.Response(json.dumps({'status': 'success', 'test': data_dict}))
+            if td_r.data_type == "E'":
+                test_data['e_prime'].append({'x': td_r.x_value, 'y': td_r.y_value})
+            elif td_r.data_type == 'Tan Delta':
+                test_data['tan_delta'].append({'x': td_r.x_value, 'y': td_r.y_value})
+        resp = flask.Response(json.dumps({'status': 'success',
+                                          'formulation_id': formulation_id,
+                                          'test_id': test_id,
+                                          'test_data': test_data,
+                                          'test': test_data}))
     elif request.method == 'POST':
         # add data file
         if request.is_xhr:
@@ -188,10 +185,7 @@ def test_instance_data_collection_service(test_id):
                 print('FileNotFound: ', filepath)
                 resp = flask.Response(json.dumps({'status': 'failed', 'url': filepath}))
 
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS']
-    resp.headers['Access-Control-Allow-Headers'] = ['Origin', 'Content-Type', 'X-Auth-Token']
-    return resp
+    return set_debug_response_header(resp)
 
 
 @app.route('/api/v1/dataOperation/tests', methods=['GET', 'POST'])
@@ -248,10 +242,28 @@ def test_collection_service():
                                               'test_id': test.id,
                                               'test_name': test.name}))
 
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS']
-    resp.headers['Access-Control-Allow-Headers'] = ['Origin', 'Content-Type', 'X-Auth-Token']
-    return resp
+    return set_debug_response_header(resp)
+
+
+@app.route('/api/v1/dataOperation/tests/<int:test_id>', methods=['DELETE'])
+def test_instance_service(test_id):
+    resp = flask.Response(json.dumps({'status': 'failed'}))
+    if request.method == 'DELETE':
+        formulation_id = request.json['formulationID']
+        Test.query.filter(Test.id == test_id).delete()
+        TestData.query.filter(TestData.test_id == test_id).delete()
+        TestAttachment.query.filter(TestAttachment.test_id == test_id).delete()
+
+        try:
+            dirpath = os.path.join(UPLOAD_FOLDER, str(test_id))
+            rmtree(dirpath)
+            db.session.commit()
+            resp = flask.Response(
+                json.dumps({'status': 'success', 'test_id': test_id, 'formulation_id': formulation_id}))
+        except OSError:
+            resp = flask.Response(json.dumps({'status': 'failed', 'test_id': test_id}))
+
+    return set_debug_response_header(resp)
 
 
 ############################################################
@@ -305,43 +317,55 @@ def formulation_collection_service():
                                               'new_formulation_id': formulation.id,
                                               'new_formulation_name': formulation.name}))
 
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS']
-    resp.headers['Access-Control-Allow-Headers'] = ['Origin', 'Content-Type', 'X-Auth-Token']
-    return resp
+    return set_debug_response_header(resp)
 
 
-@app.route('/api/v1/dataOperation/formulations/<f_id>', methods=['PUT'])
+@app.route('/api/v1/dataOperation/formulations/<f_id>', methods=['PUT', 'DELETE'])
 def formulation_instance_service(f_id):
     resp = flask.Response(json.dumps({'status': 'failed'}))
-    if request.is_json:
-        p_json_list = request.json['properties']
+    if request.method == 'PUT':
+        if request.is_json:
+            p_json_list = request.json['properties']
+            formulation = Formulation.query.get(f_id)
+            formulation.formulation_property.delete()
+            # fp_rs = Formulation.query.get(f_id).formulation_property
+            # FormulationProperty.query.filter(FormulationProperty.formulation_id == f_id).delete()
+            for p in p_json_list:
+                formulation.formulation_property.append(FormulationProperty(
+                    key=p['keyName'],
+                    value=p['valueName']
+                ))
+            db.session.commit()
+            p_list = []
+            for p in formulation.formulation_property:
+                p_list.append({p.key: p.value})
+            resp = flask.Response(json.dumps({'status': 'success',
+                                              'formulation_id': formulation.id,
+                                              'formulation_properties': p_list}))
+    elif request.method == 'DELETE':
         formulation = Formulation.query.get(f_id)
-        formulation.formulation_property.delete()
-        # fp_rs = Formulation.query.get(f_id).formulation_property
-        # FormulationProperty.query.filter(FormulationProperty.formulation_id == f_id).delete()
-        for p in p_json_list:
-            formulation.formulation_property.append(FormulationProperty(
-                key=p['keyName'],
-                value=p['valueName']
-            ))
-        db.session.commit()
-        p_list = []
-        for p in formulation.formulation_property:
-            p_list.append({p.key: p.value})
-        resp = flask.Response(json.dumps({'status': 'success',
-                                          'formulation_id': formulation.id,
-                                          'formulation_properties': p_list}))
-    return resp
+        test_count = formulation.test.count()
+        if test_count > 0:
+            resp = flask.Response(json.dumps({'status': 'failed',
+                                              'error': 'the tests count of formulation id %d is not 0, '
+                                                       'delete tests first'}))
+        else:
+            Formulation.query.filter(Formulation.id == f_id).delete()
+            db.session.commit()
+    return set_debug_response_header(resp)
 
 
-@app.route('/api/v1/dataOperation/formulations/<int:f_id>/tests', methods=['GET', 'POST'])
+@app.route('/api/v1/dataOperation/formulations/<int:f_id>/tests', methods=['GET'])
 def formulation_instance_test_collection_service(f_id):
     resp = flask.Response(json.dumps({'status': 'failed'}))
     if request.method == 'GET':
         test_list = []
         test_rs = Formulation.query.get(f_id).test
         for test_r in test_rs:
+            attachment_list = []
+            at_rs = test_r.test_attachment
+            for at_r in at_rs:
+                attachment_list.append({'attachment_name': at_r.name, 'attachment_url': at_r.attachment_url})
             test_list.append({
                 'id': test_r.id,
                 'name': test_r.name,
@@ -355,13 +379,55 @@ def formulation_instance_test_collection_service(f_id):
                 'data_file_url': test_r.data_file_url,
                 'date': test_r.date.timestamp(),
                 'formulation_id': test_r.formulation_id,
+                'attachment_url': attachment_list
             })
         resp = flask.Response(json.dumps({
             'status': 'success',
             'test_list': test_list,
             'formulation_id': f_id,
         }))
-    return resp
+    return set_debug_response_header(resp)
+
+
+# x: temperature, y: frequency, z: tan delta
+@app.route('/api/v1/dataOperation/formulations/<int:f_id>/data', methods=['GET'])
+def formulation_instance_data_collection_service(f_id):
+    resp = flask.Response(json.dumps({'status': 'failed'}))
+    if request.method == 'GET':
+        test_rs = Formulation.query.get(f_id).test
+        lines = []
+        for test_r in test_rs:
+            td_rs = test_r.test_data.order_by(TestData.x_value)
+            xt, yt, zt = [], [], []
+            xe, ye, ze = [], [], []
+            if test_r.measure_type == 'temperature':
+                for td_r in td_rs:
+                    if td_r.data_type == 'Tan Delta':
+                        xt.append(td_r.x_value)
+                        yt.append(test_r.frequency_min)
+                        zt.append(td_r.y_value)
+                    else:
+                        xe.append(td_r.x_value)
+                        ye.append(test_r.frequency_min)
+                        ze.append(td_r.y_value)
+            else:
+                for td_r in td_rs:
+                    if td_r.data_type == 'Tan Delta':
+                        xt.append(test_r.temperature_min)
+                        yt.append(td_r.x_value)
+                        zt.append(td_r.y_value)
+                    else:
+                        xe.append(test_r.temperature_min)
+                        ye.append(td_r.x_value)
+                        ze.append(td_r.y_value)
+            line = {'xt': xt, 'yt': yt, 'zt': zt, 'xe': xe, 'ye': ye, 'ze': ze, 'name': test_r.name, 'id': test_r.id}
+            lines.append(line)
+        resp = flask.Response(json.dumps({
+            'status': 'success',
+            'lines': lines,
+            'formulation_id': f_id,
+        }))
+    return set_debug_response_header(resp)
 
 ############################################################
 # formulations services begin                              #
