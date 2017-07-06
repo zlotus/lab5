@@ -27,24 +27,30 @@ def formulation_instance_model_collection_train_analysis_service(f_id):
                                           'training_uuid': training_uuid,
                                           'logging_uuid': logging_uuid}))
     elif request.args.get('action') == 'getPlotData':
-        result = r.get(request.args.get('redisTrainingTaskID'))
-        print(result, request.args.get('redisTrainingTaskID'))
-        resp = flask.Response(result)
+        resp = flask.Response(r.get(request.args.get('redisTrainingTaskID')))
+    else:
+        fdm = FormulationDataModel(f_id)
+        saved_model_list = fdm.get_saved_model_list()
+        if len(saved_model_list) > 0:
+            resp = flask.Response({'saved_model_list': saved_model_list})
     return set_debug_response_header(resp)
 
 
 @app.route('/api/v1/dataAnalysis/formulations/<int:f_id>/logs', methods=['GET'])
 def formulation_instance_log_collection_analysis_service(f_id):
-    result = r.get(request.args.get('redisLoggingTaskID'))
-    print(result)
-    resp = flask.Response(result)
+    resp = flask.Response(r.get(request.args.get('redisLoggingTaskID')))
     return set_debug_response_header(resp)
 
 
-@app.route('/api/v1/dataAnalysis/formulations/<int:f_id>/models/<int:m_id>/data', methods=['GET'])
-def formulation_instance_model_instance_data_collection_analysis_service(f_id, m_id):
-    resp = flask.Response(json.dumps({'status': 'failed'}))
-
+@app.route('/api/v1/dataAnalysis/formulations/<int:f_id>/models/<string:model_name>/', methods=['GET'])
+def formulation_instance_model_instance_analysis_service(f_id, model_name):
+    fdm = FormulationDataModel(f_id, model_name=model_name)
+    data_traces, grid_traces = fdm.get_formulation_predict_data()
+    resp = flask.Response(json.dumps({'status': 'success',
+                                      'formulation_id': f_id,
+                                      'data_traces': data_traces,
+                                      'grid_traces': grid_traces,
+                                      'model_name': model_name}))
     return set_debug_response_header(resp)
 
 
@@ -109,4 +115,3 @@ def formulation_instance_data_collection_analysis_service(f_id):
             'formulation_id': f_id,
         }))
     return set_debug_response_header(resp)
-
