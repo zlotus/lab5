@@ -18,21 +18,25 @@ r = redis.Redis()
 @app.route('/api/v1/dataAnalysis/formulations/<int:f_id>/models', methods=['GET'])
 def formulation_instance_model_collection_train_analysis_service(f_id):
     resp = flask.Response(json.dumps({'status': 'failed'}))
-    if request.args.get('action') == 'start':
+    if request.args.get('action') == 'train':
         training_uuid = str(uuid.uuid1()).replace('-', '')[:8]
         logging_uuid = str(uuid.uuid1()).replace('-', '')[:8]
-        fit_model_task.delay(training_uuid, logging_uuid, f_id, epochs=int(request.args.get('epochs')))
+        fit_model_task.delay(f_id, training_uuid, logging_uuid, epochs=int(request.args.get('epochs')))
         resp = flask.Response(json.dumps({'status': 'success',
                                           'formulation_id': f_id,
                                           'training_uuid': training_uuid,
                                           'logging_uuid': logging_uuid}))
     elif request.args.get('action') == 'getPlotData':
         resp = flask.Response(r.get(request.args.get('redisTrainingTaskID')))
-    else:
+    elif request.args.get('action') == 'getModelList':
         fdm = FormulationDataModel(f_id)
         saved_model_list = fdm.get_saved_model_list()
         if len(saved_model_list) > 0:
             resp = flask.Response({'saved_model_list': saved_model_list})
+    elif request.args.get('action') == 'saveToDB':
+        fdm = FormulationDataModel(f_id, model_name=request.args.get('modelName'))
+        fdm.save_grid_to_db()
+        resp = flask.Response({'status': 'success'})
     return set_debug_response_header(resp)
 
 

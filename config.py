@@ -10,4 +10,4 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 UPLOAD_FOLDER = './test_data'
 MODEL_FOLDER = './models'
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc'}
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png'}

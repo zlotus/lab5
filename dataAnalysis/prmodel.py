@@ -1,4 +1,4 @@
-from dataOperation.models import Formulation, TestData
+from dataOperation.models import Formulation, FormulationDataGrid, TestData
 from numpy import array
 from sklearn.preprocessing import StandardScaler
 import os
@@ -11,6 +11,8 @@ import numpy as np
 from datetime import datetime
 from redis import Redis
 from math import ceil, floor
+from app import db
+
 
 r = Redis(host='127.0.0.1')
 
@@ -20,9 +22,7 @@ class FormulationDataModel:
         self.f_id = f_id
         self.fit_history = None
         self.model_dir = os.path.join(MODEL_FOLDER, str(f_id), 'model')
-        self.log_dir = os.path.join(MODEL_FOLDER, str(f_id), 'log')
         os.makedirs(self.model_dir, exist_ok=True)
-        os.makedirs(self.log_dir, exist_ok=True)
         # init sequential model
         if model_name != '':
             self.model = load_model(os.path.join(self.model_dir, str(model_name)))
@@ -111,15 +111,44 @@ class FormulationDataModel:
                                 'z': grid_z_list[grid_line_index].tolist()})
         return data_traces, grid_traces
 
+    def save_grid_to_db(self, model=None):
+        if model is not None:
+            self.model = model
+        f_instance = Formulation.query.get(self.f_id)
+        f_instance.formulation_data_grid.delete()
+        # prepare data lines to plot
+        X, y, data_traces = self.get_formulation_training_data()
+        # train model to fit data lines
+        scaler = StandardScaler().fit(X)
+        # prepare mesh grid to plot
+        max_t, max_f = np.amax(X, axis=0)
+        min_t, min_f = np.amin(X, axis=0)
+        xv, yv = np.meshgrid(np.arange(floor(min_t), ceil(max_t)),
+                             np.arange(floor(min_f), ceil(max_f)),
+                             indexing='ij')
+        xv = xv.reshape((xv.shape[0], xv.shape[1], -1))
+        yv = yv.reshape((yv.shape[0], yv.shape[1], -1))
+        grid_xys = np.concatenate((xv, yv), axis=2).reshape((-1, 2))
+        # predict z for grid
+        grid_zs = self.model.predict(scaler.transform(grid_xys)).reshape((-1))
+        for x, y, z in zip(grid_xys[:, 0], grid_xys[:, 1], grid_zs):
+            f_instance.formulation_data_grid.append(FormulationDataGrid(x_value=x, y_value=y, z_value=z))
+        db.session.commit()
+
     def get_saved_model_list(self):
         saved_model_list = []
         for entry in os.scandir(self.model_dir):
             if entry.is_file(follow_symlinks=False):
                 saved_model_list.append({'model_name': entry.name})
 
-    def save_model(self, model_name=str(datetime.now().timestamp()), model=None):
+    def save_model(self, model_name=str(datetime.now().timestamp()), model=None, singleton=True):
         if model is not None:
             self.model = model
+        # only save the newest model
+        if singleton:
+            for entry in os.scandir(self.model_dir):
+                if entry.is_file(follow_symlinks=False):
+                    os.remove(entry.path)
         self.model.save(os.path.join(self.model_dir, str(model_name)))
 
     def get_formulation_line_data(self, data_type="Tan Delta"):

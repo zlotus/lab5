@@ -10,12 +10,12 @@ r = Redis(host='127.0.0.1')
 
 
 @celery.task
-def fit_model_task(training_uuid, logging_uuid, f_id, epochs=100):
+def fit_model_task(f_id, training_uuid, logging_uuid, epochs=100):
     fdm = FormulationDataModel(f_id)
     model, fit_history = fdm.fit_model(logging_uuid, epochs=epochs)
     data_traces, grid_traces = fdm.get_formulation_predict_data()
-    # save model with a format name like 2017-07-01-09_13-15-30_loss-0.000285714.hdf5
-    model_name = '%s_loss-%d' % (datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), fit_history.history['loss'][-1])
+    # save model with a format name like 2017-07-12_20-38-39_loss-0.0118556629749.hdf5
+    model_name = '%s_loss-%s.hdf5' % (datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), str(fit_history.history['loss'][-1]))
     fdm.save_model(model=model, model_name=model_name)
 
     result = json.dumps({'status': 'success',
