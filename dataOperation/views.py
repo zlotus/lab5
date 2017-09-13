@@ -11,17 +11,13 @@ from dataOperation.models import Formulation, FormulationProperty, Test, TestDat
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
-
-
-@app.route('/')
-@app.route('/index')
-def index():
-    return 'hello world!'
+from pprint import pprint
 
 
 ############################################################
 # dashboard services begin                                 #
 ############################################################
+
 
 @app.route('/api/v1/dashboard', methods=['GET'])
 def dashboard_service():
@@ -429,6 +425,139 @@ def formulation_instance_data_collection_service(f_id):
         }))
     return set_debug_response_header(resp)
 
+
 ############################################################
 # formulations services begin                              #
+############################################################
+
+############################################################
+# global services begin                                    #
+############################################################
+
+
+@app.route('/api/v1/dataOperation/data', methods=['GET'])
+def data_collection_service():
+    resp = flask.Response(json.dumps({'status': 'failed'}))
+    if request.method == 'GET':
+        temperature_min = request.args.get('temperatureMin', type=float)
+        temperature_max = request.args.get('temperatureMax', type=float)
+        frequency_min = request.args.get('frequencyMin', type=float)
+        frequency_max = request.args.get('frequencyMax', type=float)
+        tan_delta_min = request.args.get('tanDeltaMin', type=float)
+        tan_delta_max = request.args.get('tanDeltaMax', type=float)
+        e_prime_min = request.args.get('ePrimeMin', type=float)
+        e_prime_max = request.args.get('ePrimeMax', type=float)
+        fm_list_query_results = []
+        # [
+        #   {
+        #       'formulation_id': 1,
+        #       'formulation_name': 'f1',
+        #       'formulation_date': '2017-07-20',
+        #       'formulation_properties': [
+        #           'key': 'value'
+        #           ...
+        #       ],
+        #       'fm_query_results': [
+        #           {
+        #               'test_id': 1,
+        #               'name': 't1'
+        #               ...
+        #               'e_prime_data': [
+        #                   {'x': 1, 'y': 2},
+        #                   ...
+        #               ],
+        #               'tan_delta_data': [
+        #                   {'x': 1, 'y': 2},
+        #                   ...
+        #               ]
+        #           },
+        #       ]
+        #   },
+        #   ...
+        # ]
+        for fm_r in Formulation.query.all():
+            f_dict = {
+                'id': fm_r.id,
+                'name': fm_r.name,
+                'date': fm_r.date.strftime('%Y-%m-%d %H:%M:%S'),
+                'formulation_properties': [{p.key: p.value} for p in fm_r.formulation_property],
+                'fm_query_results': []
+            }
+
+            for test_r in fm_r.test:
+                if test_r.measure_type == 'temperature' and frequency_min <= test_r.frequency_min <= frequency_max:
+                    e_prime_data_rs = TestData.query.filter(
+                        (TestData.test_id == test_r.id) &
+                        (TestData.data_type == 'E\'') &
+                        (TestData.x_value >= temperature_min) & (TestData.x_value <= temperature_max) &
+                        (TestData.y_value >= e_prime_min) & (TestData.y_value <= e_prime_max)
+                    ).order_by(TestData.x_value)
+                    tan_delta_data_rs = TestData.query.filter(
+                        (TestData.test_id == test_r.id) &
+                        (TestData.data_type == 'Tan Delta') &
+                        (TestData.x_value >= temperature_min) & (TestData.x_value <= temperature_max) &
+                        (TestData.y_value >= tan_delta_min) & (TestData.y_value <= tan_delta_max)
+                    ).order_by(TestData.x_value)
+                    if e_prime_data_rs.count() > 0 or tan_delta_data_rs.count() > 0:
+                        test_query_result = {
+                            'id': test_r.id,
+                            'name': test_r.name,
+                            'measure_type': test_r.measure_type,
+                            'thickness': test_r.thickness,
+                            'temperature_min': test_r.temperature_min,
+                            'temperature_max': test_r.temperature_max,
+                            'frequency_min': test_r.frequency_min,
+                            'frequency_max': test_r.frequency_max,
+                            'test_type': test_r.test_type,
+                            'date': test_r.date.strftime('%Y-%m-%d %H:%M:%S'),
+                            'e_prime_data': [],
+                            'tan_delta_data': [],
+                        }
+                        for data_r in e_prime_data_rs:
+                            test_query_result['e_prime_data'].append({'x': data_r.x_value, 'y': data_r.y_value})
+                        for data_r in tan_delta_data_rs:
+                            test_query_result['tan_delta_data'].append({'x': data_r.x_value, 'y': data_r.y_value})
+                        f_dict['fm_query_results'].append(test_query_result)
+                elif test_r.measure_type == 'frequency' and temperature_min <= test_r.temperature_min <= temperature_max:
+                    e_prime_data_rs = TestData.query.filter(
+                        (TestData.test_id == test_r.id) &
+                        (TestData.data_type == 'E\'') &
+                        (TestData.x_value >= frequency_min) & (TestData.x_value <= frequency_max) &
+                        (TestData.y_value >= e_prime_min) & (TestData.y_value <= e_prime_max)
+                    ).order_by(TestData.x_value)
+                    tan_delta_data_rs = TestData.query.filter(
+                        (TestData.test_id == test_r.id) &
+                        (TestData.data_type == 'Tan Delta') &
+                        (TestData.x_value >= frequency_min) & (TestData.x_value <= frequency_max) &
+                        (TestData.y_value >= tan_delta_min) & (TestData.y_value <= tan_delta_max)
+                    ).order_by(TestData.x_value)
+                    if e_prime_data_rs.count() > 0 or tan_delta_data_rs.count() > 0:
+                        test_query_result = {
+                            'id': test_r.id,
+                            'name': test_r.name,
+                            'measure_type': test_r.measure_type,
+                            'thickness': test_r.thickness,
+                            'temperature_min': test_r.temperature_min,
+                            'temperature_max': test_r.temperature_max,
+                            'frequency_min': test_r.frequency_min,
+                            'frequency_max': test_r.frequency_max,
+                            'test_type': test_r.test_type,
+                            'date': test_r.date.strftime('%Y-%m-%d %H:%M:%S'),
+                            'e_prime_data': [],
+                            'tan_delta_data': [],
+                        }
+                        for data_r in e_prime_data_rs:
+                            test_query_result['e_prime_data'].append({'x': data_r.x_value, 'y': data_r.y_value})
+                        for data_r in tan_delta_data_rs:
+                            test_query_result['tan_delta_data'].append({'x': data_r.x_value, 'y': data_r.y_value})
+                        f_dict['fm_query_results'].append(test_query_result)
+            if len(f_dict['fm_query_results']) > 0:
+                fm_list_query_results.append(f_dict)
+        pprint(fm_list_query_results)
+        resp = flask.Response(json.dumps({'status': 'success', 'query_result': fm_list_query_results}))
+
+    return set_debug_response_header(resp)
+
+############################################################
+# global services begin                                    #
 ############################################################

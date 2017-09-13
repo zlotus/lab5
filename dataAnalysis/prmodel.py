@@ -1,5 +1,4 @@
 from dataOperation.models import Formulation, FormulationDataGrid, TestData
-from numpy import array
 from sklearn.preprocessing import StandardScaler
 import os
 from config import MODEL_FOLDER

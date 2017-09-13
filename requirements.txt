@@ -7,3 +7,4 @@ numpy
 celery
 celery[redis]
 redis
+flask-security

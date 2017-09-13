@@ -3,3 +3,4 @@ migrations
 app.db
 test_data
 models
+dist
