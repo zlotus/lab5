@@ -5,6 +5,7 @@ from config import MODEL_FOLDER
 from keras.layers import Dense
 from keras.models import Sequential, load_model
 from keras.callbacks import LambdaCallback
+from keras.layers.noise import AlphaDropout
 import json
 import numpy as np
 from datetime import datetime
@@ -30,6 +31,7 @@ class FormulationDataModel:
             self.model.add(Dense(64, input_dim=2, activation=activation, kernel_initializer='random_normal'))
             for i in range(hidden_layers):
                 self.model.add(Dense(64, activation=activation, kernel_initializer='random_normal'))
+                self.model.add(AlphaDropout(0.2))
             self.model.add(Dense(1, activation=activation, kernel_initializer='random_normal'))
             self.model.compile(loss='mse', optimizer='nadam')
 
